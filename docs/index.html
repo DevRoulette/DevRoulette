@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DevRoulette — chat with a random dev while your task runs</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 4rem 1.25rem;
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #ececec; background: #14151a; }
+      a { color: #6db3ff; }
+      .sub, footer { color: #b9bcc4; }
+      pre { background: #1d1f27; }
+    }
+    h1 { font-size: 2rem; margin: 0 0 .25rem; }
+    .sub { color: #555; margin: 0 0 2rem; }
+    a { color: #1167d6; }
+    pre {
+      background: #f4f4f6; padding: 1rem 1.1rem; border-radius: 8px; overflow-x: auto;
+      font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    ul { padding-left: 1.2rem; }
+    li { margin: .35rem 0; }
+    footer { margin-top: 3rem; color: #555; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>DevRoulette</h1>
+  <p class="sub">Chatroulette for devs waiting on Claude Code. When a task runs long, you're paired with a random stranger who's also waiting — anonymous, in your terminal.</p>
+
+  <pre>npm i -g devroulette-cli
+devroulette init</pre>
+
+  <ul>
+    <li>A long task (~30s+) opens the chat and matches you — one window per machine.</li>
+    <li>Not tied to the task: chat as long as you like. <strong>/skip</strong> for a new dev, <strong>/quit</strong> to close.</li>
+    <li>Closed it? Start another long task to reopen.</li>
+    <li>Anonymous. No accounts. <strong>Nothing is logged.</strong></li>
+    <li><strong>18+ only</strong> — you're chatting with random strangers.</li>
+  </ul>
+
+  <p><a href="legal.html">Terms &amp; Privacy →</a></p>
+
+  <footer>
+    powered by MyAi.Bi · <a href="https://www.npmjs.com/package/devroulette-cli">npm</a> ·
+    <a href="legal.html">terms &amp; privacy</a>
+  </footer>
+</body>
+</html>

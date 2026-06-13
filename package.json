@@ -1,0 +1,42 @@
+{
+  "name": "devroulette-cli",
+  "version": "0.1.25",
+  "type": "module",
+  "description": "Chatroulette for devs waiting on long Claude Code tasks.",
+  "bin": {
+    "devroulette": "dist/cli/src/cli.js"
+  },
+  "files": [
+    "dist/cli",
+    "dist/shared"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "prepack": "npm run build",
+    "start": "tsx server/src/index.ts",
+    "dr": "node dist/cli/src/cli.js",
+    "server": "tsx server/src/index.ts",
+    "devroulette": "tsx cli/src/cli.ts",
+    "typecheck": "tsc --noEmit && tsc -p cli/tsconfig.json --noEmit",
+    "lint": "eslint . --quiet",
+    "test": "node --import tsx --test tests/integration.test.ts"
+  },
+  "dependencies": {
+    "ink": "5.0.1",
+    "ink-text-input": "6.0.0",
+    "react": "18.3.1",
+    "terminal-link": "3.0.0",
+    "ws": "8.21.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/ws": "^8.5.10",
+    "eslint": "^9.9.0",
+    "tsx": "4.22.4",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.4.0"
+  }
+}

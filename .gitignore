@@ -1,0 +1,23 @@
+# deps & build output
+node_modules/
+dist/
+vscode/dist/
+
+# packaged extension
+*.vsix
+
+# secrets / env (the admin key lives ONLY in Railway env — never commit it)
+.env
+.env.*
+*.handoff
+
+# os / editor junk
+.DS_Store
+*.log
+
+# scratch / test artifacts (not part of the project)
+*.tgz
+dad_jokes*.txt
+dr-probe.mjs
+hold.mjs
+hold-window.ts

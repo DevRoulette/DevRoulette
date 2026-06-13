@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+*.tgz
+*.devroulette-backup-*
+backups
+.DS_Store

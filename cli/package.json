@@ -1,0 +1,22 @@
+{
+  "name": "devroulette",
+  "version": "0.1.0",
+  "description": "Chat with a random dev while your Claude Code task runs long.",
+  "type": "module",
+  "bin": {
+    "devroulette": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ink": "5.0.1",
+    "ink-text-input": "6.0.0",
+    "react": "18.3.1",
+    "ws": "8.18.0",
+    "zod": "3.23.8"
+  }
+}

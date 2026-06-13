@@ -1,0 +1,50 @@
+{
+  "name": "devroulette-vscode",
+  "displayName": "DevRoulette",
+  "description": "Chat with a random dev while your Claude Code task runs — in a sidebar.",
+  "version": "0.1.0",
+  "publisher": "myaibi",
+  "icon": "media/icon.png",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": ["onView:devroulette.chat"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "devroulette", "title": "DevRoulette", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "devroulette": [
+        { "type": "webview", "id": "devroulette.chat", "name": "Chat" }
+      ]
+    },
+    "configuration": {
+      "title": "DevRoulette",
+      "properties": {
+        "devroulette.serverUrl": {
+          "type": "string",
+          "default": "wss://devroulette-production.up.railway.app",
+          "description": "DevRoulette matchmaking server URL."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package"
+  },
+  "dependencies": {
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.6.2"
+  }
+}
