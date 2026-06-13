@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 
 const SETTINGS = join(homedir(), ".claude", "settings.json");
 // Default matchmaking server baked into hooks when no URL is given, so a bare
@@ -44,7 +46,60 @@ function isOurs(entry: HookEntry): boolean {
   );
 }
 
-export function install(url?: string): void {
+function cliPath(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "cli.js");
+}
+
+// ANSI (16-colour, universally supported). Lime green = brand, white = text.
+const C = {
+  L: "\x1b[92m", W: "\x1b[97m", D: "\x1b[2m", B: "\x1b[1m", R: "\x1b[0m",
+};
+const bar = `${C.L}▌${C.R}`;
+
+function printWelcome(): void {
+  console.log([
+    ``,
+    `${bar}  ${C.B}${C.L}Dev${C.W}Roulette${C.R}   ${C.D}— chatroulette for Claude Code${C.R}`,
+    `${bar}`,
+    `${bar}  ${C.L}✓${C.R} installed for this machine.`,
+    `${bar}`,
+    `${bar}  Start a long Claude Code task ${C.D}→${C.R} a chat opens automatically.`,
+    `${bar}  In chat:  ${C.L}/skip${C.R} new dev   ${C.D}·${C.R}   ${C.L}/quit${C.R} close   ${C.D}(it's yours — chat as long as you like)${C.R}`,
+    `${bar}  No task? Open one anytime:  ${C.B}${C.L}devroulette start${C.R}`,
+    `${bar}`,
+    `${bar}  ${C.D}anonymous · no accounts · chat not logged · 18+${C.R}`,
+    `${bar}  ${C.D}github.com/DevRoulette/DevRoulette${C.R}`,
+    ``,
+  ].join("\n"));
+}
+
+/** Offer to jump straight into a chat — only on an interactive terminal, so a
+ *  piped/CI install never hangs. Robust: any failure just prints the CTA. */
+async function maybeLaunch(): Promise<void> {
+  if (!process.stdin.isTTY) return;
+  let ans = "";
+  try {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    ans = await new Promise<string>((res) =>
+      rl.question(`${bar}  Try a chat now? ${C.D}[Y/n]${C.R} `, (a) => res(a.trim().toLowerCase())),
+    );
+    rl.close();
+  } catch {
+    return;
+  }
+  if (ans === "" || ans === "y" || ans === "yes") {
+    try {
+      const child = spawn(process.execPath, [cliPath(), "start"], { stdio: "inherit" });
+      await new Promise<void>((res) => child.on("exit", () => res()));
+    } catch {
+      console.log(`${bar}  run ${C.L}devroulette start${C.R} whenever you're ready.`);
+    }
+  } else {
+    console.log(`${bar}  cool — run ${C.L}${C.B}devroulette start${C.R} whenever you're ready.\n`);
+  }
+}
+
+export async function install(url?: string): Promise<void> {
   // `||` (not `??`) so an empty url arg / empty DEVROULETTE_URL still falls through
   // to the production default instead of baking an empty (→ localhost) URL.
   const server = url || process.env.DEVROULETTE_URL || DEFAULT_URL;
@@ -89,7 +144,8 @@ export function install(url?: string): void {
   }
 
   writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
-  console.log("Done. DevRoulette opens while a task runs >30s and closes when it finishes.");
+  printWelcome();
+  await maybeLaunch();
 }
 
 export function uninstall(): void {

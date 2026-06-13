@@ -44,7 +44,7 @@ const debug = argv.includes("--debug") && process.env.DEVROULETTE_DEV === "1";
 const manualStart = argv[0] === "start";
 
 if (argv[0] === "init") {
-  install(argv[1]); // optional server URL, e.g. `devroulette init wss://host`
+  await install(argv[1]); // optional server URL, e.g. `devroulette init wss://host`
   process.exit(0);
 }
 if (argv[0] === "uninstall") {
