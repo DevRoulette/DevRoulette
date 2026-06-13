@@ -5,10 +5,12 @@ and pairs you with a random dev who's also around. From there it's yours — cha
 long as you like, `/skip` for a new dev, `/quit` to close. It's a terminal chat
 (and a VS Code sidebar — see `vscode/`).
 
-Anonymous. No accounts. No names you pick. **Nothing is logged.**
+Anonymous. No accounts. No names you pick. **Chat not logged.**
 
 **18+ only** — you're chatting with random, anonymous strangers, at your own risk.
 By using DevRoulette you agree to the [Terms & Privacy](https://devroulette.github.io/DevRoulette/legal.html).
+
+*Not using Claude Code? Open a chat anytime, in any terminal, with `devroulette start`.*
 
 ---
 

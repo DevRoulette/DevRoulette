@@ -10,8 +10,9 @@ type Line = { kind: "you" | "them" | "sys"; from?: string; body: string };
 type Status = "waiting" | "chatting";
 
 const FOOTER = "/skip   /report   /quit   /insights   /help";
-const HOUSE_AD = '"Your Ad Here" - Visit MyAi.Bi/Ads';
-const HOUSE_AD_URL = "https://myai.bi/ads";
+const HOUSE_AD = '"Your Ad Here" — advertise';
+const HOUSE_AD_URL = "https://github.com/DevRoulette/DevRoulette/issues/new?title=Advertising+inquiry";
+const GITHUB_FOOTER = terminalLink("github.com/DevRoulette", "https://github.com/DevRoulette", { fallback: (t) => t });
 const LEGAL_URL = "https://devroulette.github.io/DevRoulette/legal.html";
 const MAX_RECONNECTS = 5;
 
@@ -241,7 +242,7 @@ export function App(
 
       <Box flexDirection="column" paddingX={1} marginTop={1}>
         <Text>{renderAd(ad)}</Text>
-        <Text color="cyan">{FOOTER}   ·   MyAi.Bi/DevRoulette</Text>
+        <Text color="cyan">{FOOTER}   ·   {GITHUB_FOOTER}</Text>
       </Box>
     </Box>
   );

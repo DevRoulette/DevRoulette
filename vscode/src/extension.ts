@@ -205,7 +205,7 @@ const WEBVIEW_HTML = /* html */ `<!doctype html>
     adEl.innerHTML = "";
     const a = document.createElement("a");
     if (ad && ad.text) { a.textContent = ad.text; if (ad.url) { a.href = ad.url; } }
-    else { a.textContent = '"Your Ad Here" - Visit MyAi.Bi/Ads'; a.href = "https://myai.bi/ads"; }
+    else { a.textContent = '"Your Ad Here" — advertise'; a.href = "https://github.com/DevRoulette/DevRoulette/issues/new?title=Advertising+inquiry"; }
     adEl.appendChild(a);
   }
   setAd(null);
