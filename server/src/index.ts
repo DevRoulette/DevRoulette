@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID, randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import {
   ClientFrame,
   PROTOCOL_VERSION,
@@ -119,31 +120,94 @@ interface ReportRec {
 const reports = new Map<string, ReportRec>();
 const MAX_REPORT_IPS = 5000;
 
-// ---- usage stats (in-memory; reset when the server restarts/redeploys) ----
-// Live numbers (online / ongoing / waiting) are always exact. Totals + per-day
-// counts are since the last restart — persistence across deploys would need a
-// volume; npm download counts (fetched below) are the real cross-restart adoption
-// signal. No chat content is involved — just counters.
+// ---- usage stats: per-UTC-day buckets, PERSISTED to a volume so they survive
+// restarts/redeploys (otherwise every deploy reset them to 0). No chat content —
+// just counts of connections / convos / messages + distinct match-keys (≈ people).
 const serverStart = Date.now();
-const stats = {
-  connections: 0, // sockets accepted since restart
-  matches: 0, // convos started since restart
-  messages: 0, // messages relayed since restart
-  machines: new Set<string>(), // distinct match-keys (≈ people) seen since restart
-  byDay: new Map<string, number>(), // convos per UTC day
-};
+const DAY_MS = 86_400_000;
+const MAX_DAYS = 120;
+const MAX_MACHINES_PER_DAY = 20_000;
+const MAX_ALL_MACHINES = 100_000;
+
+interface DayBucket { conns: number; convos: number; msgs: number; machines: Set<string> }
+const byDay = new Map<string, DayBucket>();
+const allTime = { conns: 0, convos: 0, msgs: 0 };
+const allMachines = new Set<string>();
+
 function dayKey(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
-function recordMatch(): void {
-  stats.matches += 1;
-  const d = dayKey(Date.now());
-  stats.byDay.set(d, (stats.byDay.get(d) ?? 0) + 1);
-  if (stats.byDay.size > 120) {
-    const oldest = [...stats.byDay.keys()].sort()[0];
-    stats.byDay.delete(oldest);
+function bucket(d: string): DayBucket {
+  let b = byDay.get(d);
+  if (!b) {
+    b = { conns: 0, convos: 0, msgs: 0, machines: new Set() };
+    byDay.set(d, b);
+    if (byDay.size > MAX_DAYS) byDay.delete([...byDay.keys()].sort()[0]);
+  }
+  return b;
+}
+function recordConn(matchKey: string): void {
+  const b = bucket(dayKey(Date.now()));
+  b.conns += 1;
+  allTime.conns += 1;
+  if (b.machines.size < MAX_MACHINES_PER_DAY) b.machines.add(matchKey);
+  if (allMachines.size < MAX_ALL_MACHINES) allMachines.add(matchKey);
+  statsDirty = true;
+}
+function recordMatch(): void { bucket(dayKey(Date.now())).convos += 1; allTime.convos += 1; statsDirty = true; }
+function recordMsg(): void { bucket(dayKey(Date.now())).msgs += 1; allTime.msgs += 1; statsDirty = true; }
+
+// sum a counter field over the last n calendar days (today inclusive)
+function sumDays(field: "conns" | "convos" | "msgs", n: number): number {
+  const cutoff = dayKey(Date.now() - (n - 1) * DAY_MS);
+  let s = 0;
+  for (const [d, b] of byDay) if (d >= cutoff) s += b[field];
+  return s;
+}
+// distinct people over the last n days (union of the per-day match-key sets)
+function peopleDays(n: number): number {
+  const cutoff = dayKey(Date.now() - (n - 1) * DAY_MS);
+  const u = new Set<string>();
+  for (const [d, b] of byDay) if (d >= cutoff) for (const m of b.machines) u.add(m);
+  return u.size;
+}
+
+// ---- persistence (Railway volume; default mount /data) ----
+const STATS_DIR = process.env.STATS_DIR || "/data";
+const STATS_FILE = `${STATS_DIR}/stats.json`;
+let persistOn = false;
+let statsDirty = false;
+function loadStats(): void {
+  try {
+    if (!existsSync(STATS_DIR)) mkdirSync(STATS_DIR, { recursive: true });
+    writeFileSync(`${STATS_DIR}/.probe`, "ok"); // writability probe
+    persistOn = true;
+    if (existsSync(STATS_FILE)) {
+      const j = JSON.parse(readFileSync(STATS_FILE, "utf8")) as {
+        allTime?: { conns?: number; convos?: number; msgs?: number };
+        allMachines?: string[];
+        byDay?: Record<string, { conns?: number; convos?: number; msgs?: number; machines?: string[] }>;
+      };
+      if (j.allTime) { allTime.conns = j.allTime.conns ?? 0; allTime.convos = j.allTime.convos ?? 0; allTime.msgs = j.allTime.msgs ?? 0; }
+      for (const m of j.allMachines ?? []) allMachines.add(m);
+      for (const [d, b] of Object.entries(j.byDay ?? {})) {
+        byDay.set(d, { conns: b.conns ?? 0, convos: b.convos ?? 0, msgs: b.msgs ?? 0, machines: new Set(b.machines ?? []) });
+      }
+    }
+  } catch {
+    persistOn = false; // no volume (e.g. local dev) → in-memory only
   }
 }
+function saveStats(): void {
+  if (!persistOn) return;
+  try {
+    const byDayObj: Record<string, { conns: number; convos: number; msgs: number; machines: string[] }> = {};
+    for (const [d, b] of byDay) byDayObj[d] = { conns: b.conns, convos: b.convos, msgs: b.msgs, machines: [...b.machines] };
+    writeFileSync(STATS_FILE, JSON.stringify({ allTime, allMachines: [...allMachines], byDay: byDayObj }));
+    statsDirty = false;
+  } catch { /* ignore a transient write error; next tick retries */ }
+}
+loadStats();
 
 // npm download counts — the real "is it being used" signal (survives restarts).
 // Cached 1h; every call is wrapped so a slow/down npm never blocks the dashboard.
@@ -438,7 +502,7 @@ function onFrame(ws: WebSocket, meta: ConnMeta, frame: ClientFrame): void {
       if (body.length === 0) return;
       room.msgCount += 1;
       room.lastActivity = now;
-      stats.messages += 1;
+      recordMsg();
       const partner = partnerOf(ws);
       if (partner) send(partner, { t: "msg", body });
       return;
@@ -546,39 +610,51 @@ function fmtDur(ms: number): string {
 function liveStats(npm: { day: number | null; week: number | null; month: number | null }) {
   const liveMachines = new Set<string>();
   for (const cm of conns.values()) liveMachines.add(cm.matchKey);
+  const tb = byDay.get(dayKey(Date.now()));
   return {
+    // live (exact, right now)
     online: liveMachines.size,
     ongoing: rooms.size,
     waiting: queue.length,
-    today: stats.byDay.get(dayKey(Date.now())) ?? 0,
-    total: stats.matches,
-    messages: stats.messages,
-    people: stats.machines.size,
+    // connections
+    connToday: tb?.conns ?? 0, conn7: sumDays("conns", 7), conn30: sumDays("conns", 30), connAll: allTime.conns,
+    // convos started
+    convoToday: tb?.convos ?? 0, convo7: sumDays("convos", 7), convo30: sumDays("convos", 30), convoAll: allTime.convos,
+    // distinct people (match-keys)
+    pplToday: tb?.machines.size ?? 0, ppl7: peopleDays(7), ppl30: peopleDays(30), pplAll: allMachines.size,
+    // messages
+    msgToday: tb?.msgs ?? 0, msg7: sumDays("msgs", 7), msg30: sumDays("msgs", 30), msgAll: allTime.msgs,
     npmDay: npm.day, npmWeek: npm.week, npmMonth: npm.month,
     uptimeMs: Date.now() - serverStart,
+    persisted: persistOn,
   };
 }
 
 function reportsDashboardHtml(npm: { day: number | null; week: number | null; month: number | null }): string {
   const s = liveStats(npm);
-  const last7 = [...stats.byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 7);
   const npmCell = (n: number | null): string => (n === null ? "n/a" : String(n));
-  const card = (id: string, value: string, label: string, hint = ""): string =>
-    `<div class="card"><div class="cv" id="${id}">${esc(value)}</div><div class="cl">${label}</div>${hint ? `<div class="ch">${hint}</div>` : ""}</div>`;
-  const statsPanel =
-    `<div class="grid">` +
-    card("s-online", String(s.online), "online now", "people connected") +
+  const card = (id: string, value: string, label: string): string =>
+    `<div class="card"><div class="cv" id="${id}">${esc(value)}</div><div class="cl">${label}</div></div>`;
+  const liveStrip =
+    `<div class="grid3">` +
+    card("s-online", String(s.online), "online now") +
     card("s-ongoing", String(s.ongoing), "ongoing convos") +
     card("s-waiting", String(s.waiting), "waiting") +
-    card("s-today", String(s.today), "convos today") +
-    card("s-total", String(s.total), "convos total", "since restart") +
-    card("s-messages", String(s.messages), "messages", "since restart") +
-    card("s-people", String(s.people), "people seen", "since restart") +
-    card("s-npm", `${npmCell(s.npmDay)} / ${npmCell(s.npmWeek)} / ${npmCell(s.npmMonth)}`, "npm installs", "day / week / month") +
-    `</div>` +
-    `<p class="sub" style="max-width:880px"><span class="live">● live</span> · uptime ${fmtDur(s.uptimeMs)} · numbers refresh every few seconds; totals reset on restart; npm installs survive restarts (the real adoption signal)` +
-    (last7.length ? ` · recent: ${esc(last7.map(([d, n]) => `${d.slice(5)}=${n}`).join("  "))}` : "") +
-    `</p>`;
+    `</div>`;
+  const r = (m: string, today: number, d7: number, d30: number, all: number): string =>
+    `<tr><td class="metric">${m}</td><td class="num" id="s-${m}T">${today}</td><td class="num" id="s-${m}7">${d7}</td>` +
+    `<td class="num" id="s-${m}30">${d30}</td><td class="num" id="s-${m}A">${all}</td></tr>`;
+  const statsTable =
+    `<table class="stbl"><tr><th>metric</th><th>today</th><th>7&#8209;day</th><th>30&#8209;day</th><th>all&#8209;time</th></tr>` +
+    r("connected", s.connToday, s.conn7, s.conn30, s.connAll) +
+    r("convos", s.convoToday, s.convo7, s.convo30, s.convoAll) +
+    r("people", s.pplToday, s.ppl7, s.ppl30, s.pplAll) +
+    r("messages", s.msgToday, s.msg7, s.msg30, s.msgAll) +
+    `</table>`;
+  const statsPanel = liveStrip + statsTable +
+    `<p class="sub" style="max-width:880px"><span class="live">● live</span> · refreshes every 5s · uptime ${fmtDur(s.uptimeMs)} · ` +
+    `npm installs (d/w/m): <b id="s-npm">${npmCell(s.npmDay)} / ${npmCell(s.npmWeek)} / ${npmCell(s.npmMonth)}</b> · ` +
+    `${s.persisted ? "persisted ✓ survives restarts" : "<b style='color:#ff7b72'>in-memory — add a volume to persist</b>"}</p>`;
 
   const rows = [...reports.entries()].sort(
     (a, b) => b[1].reporters.size - a[1].reporters.size || b[1].count - a[1].count,
@@ -627,6 +703,13 @@ function reportsDashboardHtml(npm: { day: number | null; week: number | null; mo
   .ch{font-size:11px;color:#6e7d8d;margin-top:2px}
   h2{font-size:16px;margin:28px 0 6px}
   .live{color:#7ee787;font-weight:700}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:880px;margin:0 0 16px}
+  .stbl{border-collapse:collapse;width:100%;max-width:880px;margin:0 0 8px}
+  .stbl th{color:#aebccb;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding:7px 16px;border-bottom:1px solid #243140}
+  .stbl th:first-child{text-align:left}
+  .stbl td{padding:9px 16px;border-bottom:1px solid #1b2530;text-align:right;font-variant-numeric:tabular-nums;font-size:16px}
+  .stbl td.metric{text-align:left;color:#e6edf3}
+  .stbl td.num{color:#7ee787;font-weight:700}
 </style></head><body>
   <h1>DevRoulette — dashboard</h1>
   ${statsPanel}
@@ -652,7 +735,10 @@ function reportsDashboardHtml(npm: { day: number | null; week: number | null; mo
         if (!r.ok) return;
         var s = await r.json();
         set('s-online', s.online); set('s-ongoing', s.ongoing); set('s-waiting', s.waiting);
-        set('s-today', s.today); set('s-total', s.total); set('s-messages', s.messages); set('s-people', s.people);
+        set('s-connectedT', s.connToday); set('s-connected7', s.conn7); set('s-connected30', s.conn30); set('s-connectedA', s.connAll);
+        set('s-convosT', s.convoToday); set('s-convos7', s.convo7); set('s-convos30', s.convo30); set('s-convosA', s.convoAll);
+        set('s-peopleT', s.pplToday); set('s-people7', s.ppl7); set('s-people30', s.ppl30); set('s-peopleA', s.pplAll);
+        set('s-messagesT', s.msgToday); set('s-messages7', s.msg7); set('s-messages30', s.msg30); set('s-messagesA', s.msgAll);
         var c = function (n) { return (n === null || n === undefined) ? 'n/a' : n; };
         set('s-npm', c(s.npmDay) + ' / ' + c(s.npmWeek) + ' / ' + c(s.npmMonth));
       } catch (e) { /* ignore a hiccup; try again next tick */ }
@@ -768,7 +854,6 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     return;
   }
   m.sockets += 1;
-  stats.connections += 1;
   console.log(`[conn] connected (sockets for this ip=${m.sockets}, debug=${debug})`);
 
   // Self-match guard key: an opaque per-session token the client sends (now a
@@ -778,8 +863,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const sessHdr = req.headers["x-devroulette-session"];
   const matchKey =
     typeof sessHdr === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(sessHdr) ? sessHdr : randomUUID();
-  stats.machines.add(matchKey);
-  if (stats.machines.size > 50_000) stats.machines.clear(); // bound memory
+  recordConn(matchKey);
 
   const powPrefix = randomBytes(16).toString("hex");
   const meta: ConnMeta = {
@@ -910,13 +994,24 @@ const livenessSweep = setInterval(() => {
   }
 }, LIVENESS_CHECK_MS);
 
+// Flush stats to the volume periodically, and once more on shutdown — Railway
+// sends SIGTERM on every redeploy, so saving here is what makes the numbers
+// survive deploys instead of resetting to 0.
+const statsSave = setInterval(() => { if (statsDirty) saveStats(); }, 20_000);
+
 heartbeat.unref();
 idleSweep.unref();
 onlineBroadcast.unref();
 livenessSweep.unref();
+statsSave.unref();
+
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.on(sig, () => { saveStats(); process.exit(0); });
+}
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`devroulette server listening on ws://${HOST}:${PORT}`);
+  console.log(persistOn ? `stats persisted → ${STATS_FILE}` : `stats NOT persisted (no writable ${STATS_DIR}); add a Railway volume`);
   if (ADMIN_KEY) console.log(`admin dashboard enabled at /admin/reports (Basic Auth: any username, password = ADMIN_KEY)`);
 });
 
@@ -926,6 +1021,8 @@ export function close(): Promise<void> {
   clearInterval(idleSweep);
   clearInterval(onlineBroadcast);
   clearInterval(livenessSweep);
+  clearInterval(statsSave);
+  saveStats();
   for (const ws of conns.keys()) ws.terminate();
   return new Promise((resolve) => wss.close(() => httpServer.close(() => resolve())));
 }
