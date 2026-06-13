@@ -205,7 +205,7 @@ const WEBVIEW_HTML = /* html */ `<!doctype html>
     adEl.innerHTML = "";
     const a = document.createElement("a");
     if (ad && ad.text) { a.textContent = ad.text; if (ad.url) { a.href = ad.url; } }
-    else { a.textContent = '"Your Ad Here" — advertise: github.com/DevRoulette/ads'; a.href = "https://devroulette.github.io/ads"; }
+    else { a.textContent = '"Your Ad Here" —> github.com/DevRoulette/ads'; a.href = "https://devroulette.github.io/ads"; }
     adEl.appendChild(a);
   }
   setAd(null);

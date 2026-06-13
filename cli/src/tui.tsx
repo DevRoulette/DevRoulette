@@ -10,7 +10,7 @@ type Line = { kind: "you" | "them" | "sys"; from?: string; body: string };
 type Status = "waiting" | "chatting";
 
 const FOOTER = "/skip   /report   /quit   /insights   /help";
-const HOUSE_AD = '"Your Ad Here" — advertise: github.com/DevRoulette/ads';
+const HOUSE_AD = '"Your Ad Here" —> github.com/DevRoulette/ads';
 const HOUSE_AD_URL = "https://devroulette.github.io/ads";
 const GITHUB_FOOTER = terminalLink("github.com/DevRoulette", "https://github.com/DevRoulette", { fallback: (t) => t });
 const LEGAL_URL = "https://devroulette.github.io/DevRoulette/legal.html";
