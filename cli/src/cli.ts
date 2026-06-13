@@ -136,4 +136,11 @@ process.on("exit", () => {
 // terminal leaves on screen, so the chat opens on a clean panel.
 process.stdout.write("[2J[3J[H");
 
-render(React.createElement(App, { url, debug, session, resume }));
+const app = render(React.createElement(App, { url, debug, session, resume }));
+// After the user /quits (Ink unmounts), leave a short goodbye + how to come back —
+// so it doesn't just vanish into a blank prompt.
+await app.waitUntilExit();
+process.stdout.write(
+  `\n  \x1b[92m◍ DevRoulette closed.\x1b[0m  Reopen anytime — start a Claude Code task, ` +
+    `or run \x1b[92mdevroulette start\x1b[0m.\n\n`,
+);
