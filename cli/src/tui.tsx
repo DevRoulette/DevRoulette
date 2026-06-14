@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Box, Text, useApp } from "ink";
+import { Box, Static, Text, useApp } from "ink";
 import TextInput from "ink-text-input";
 import terminalLink from "terminal-link";
 import { execFile } from "node:child_process";
@@ -59,7 +59,9 @@ export function App(
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectsRef = useRef(0);
 
-  const push = (l: Line): void => setLines((prev) => [...prev.slice(-200), l]);
+  // Append-only — Ink's <Static> writes each line ONCE to the terminal scrollback
+  // and never re-renders it, so history persists and scrolls naturally.
+  const push = (l: Line): void => setLines((prev) => [...prev, l]);
 
   const handleEvent = (e: ClientEvent): void => {
     switch (e.t) {
@@ -80,7 +82,9 @@ export function App(
         setPartner(e.partner);
         if (e.ad) setAd(e.ad);
         setStatus("chatting");
-        setLines([
+        setLines((prev) => [
+          ...prev,
+          { kind: "sys", body: "──────────────────────────────" },
           { kind: "sys", body: `Matched with ${e.partner}. Anonymous, be decent — Chat not logged.` },
           { kind: "sys", body: "⚠ Reminder: avoid clicking links you don't trust." },
         ]);
@@ -95,7 +99,7 @@ export function App(
         // Partner's gone → roll straight into a new match (chatroulette-style).
         setPartner("");
         setStatus("waiting");
-        setLines([{ kind: "sys", body: "Partner left — finding you a new dev…" }]);
+        push({ kind: "sys", body: "Partner left — finding you a new dev…" });
         clientRef.current?.skip();
         break;
       case "error":
@@ -157,7 +161,7 @@ export function App(
     if (v === "/skip") {
       setStatus("waiting");
       setPartner("");
-      setLines([{ kind: "sys", body: "Finding you a new dev…" }]);
+      push({ kind: "sys", body: "Finding you a new dev…" });
       clientRef.current?.skip();
       return;
     }
@@ -170,7 +174,7 @@ export function App(
       clientRef.current?.skip();
       setStatus("waiting");
       setPartner("");
-      setLines([{ kind: "sys", body: "Reported — finding you a new dev…" }]);
+      push({ kind: "sys", body: "Reported — finding you a new dev…" });
       return;
     }
     if (v === "/insights") {
@@ -200,44 +204,37 @@ export function App(
     clientRef.current?.sendMsg(v);
   };
 
-  // Render only the most recent lines. Ink redraws the whole frame in place on
-  // every update; if that frame ever grows TALLER than the window, Ink can't clear
-  // the previous frame and each render stacks a fresh copy (the repeated-header
-  // wall). Capping visible lines keeps the frame short so it always clears.
-  const termRows = process.stdout.rows || 24;
-  const visibleCap = Math.max(5, Math.min(14, termRows - 10));
-  const start = Math.max(0, lines.length - visibleCap);
-  const visible = lines.slice(start);
-
   // Calm palette: cyan = app/system, green = you, magenta = partner, white = text.
   const icon = status === "chatting" ? "💬" : "🔎";
   const headline = status === "chatting" ? `you ⇄ ${partner}` : "finding you a dev…";
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+      {/* History lives in <Static>: each line is written ONCE to the terminal's
+          real scrollback, so the full convo persists and you scroll up to read it.
+          Only the small panel below re-renders, so it can never stack/overflow. */}
+      <Static items={lines}>
+        {(l, i) =>
+          l.kind === "sys" ? (
+            <Text key={i} color="cyan">·  {l.body}</Text>
+          ) : (
+            <Text key={i}>
+              <Text bold color={l.kind === "you" ? "green" : "magenta"}>{l.kind === "you" ? "you" : l.from ?? "?"}</Text>
+              <Text color="white">{`  ${l.body}`}</Text>
+            </Text>
+          )
+        }
+      </Static>
+
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
         <Box justifyContent="space-between">
           <Text bold color="cyanBright">DevRoulette</Text>
           <Text color="cyan">{online > 0 ? `● ${online} online` : ""}</Text>
         </Box>
         <Text color="cyan">{icon}  {headline}</Text>
-      </Box>
-
-      <Box flexDirection="column" marginY={1} paddingX={1}>
-        {visible.map((l, i) =>
-          l.kind === "sys" ? (
-            <Text key={start + i} color="cyan">·  {l.body}</Text>
-          ) : (
-            <Text key={start + i}>
-              <Text bold color={l.kind === "you" ? "green" : "magenta"}>{l.kind === "you" ? "you" : l.from ?? "?"}</Text>
-              <Text color="white">{`  ${l.body}`}</Text>
-            </Text>
-          ),
-        )}
-      </Box>
-
-      <Box paddingX={1}>
-        <Text bold color={status === "chatting" ? "green" : "cyan"}>❯ </Text>
-        <TextInput value={input} onChange={setInput} onSubmit={submit} />
+        <Box>
+          <Text bold color={status === "chatting" ? "green" : "cyan"}>❯ </Text>
+          <TextInput value={input} onChange={setInput} onSubmit={submit} />
+        </Box>
       </Box>
 
       <Box flexDirection="column" paddingX={1} marginTop={1}>
