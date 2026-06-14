@@ -9,7 +9,7 @@ import type { Ad } from "../../shared/src/protocol.js";
 type Line = { kind: "you" | "them" | "sys"; from?: string; body: string };
 type Status = "waiting" | "chatting";
 
-const FOOTER = "/skip   /report   /quit   /insights   /help";
+const FOOTER = "/skip  /report  /mutenotif  /quit  /insights  /help";
 const HOUSE_AD = '"Your Ad Here" —> github.com/DevRoulette/ads';
 const HOUSE_AD_URL = "https://devroulette.github.io/ads";
 const GITHUB_FOOTER = terminalLink("github.com/DevRoulette", "https://github.com/DevRoulette", { fallback: (t) => t });
@@ -58,10 +58,14 @@ export function App(
   const bannedRef = useRef(false);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectsRef = useRef(0);
+  const mutedRef = useRef(false); // /mutenotif toggles notification sounds
+  const reminderShownRef = useRef(false); // show the link reminder once per session
 
   // Append-only — Ink's <Static> writes each line ONCE to the terminal scrollback
   // and never re-renders it, so history persists and scrolls naturally.
   const push = (l: Line): void => setLines((prev) => [...prev, l]);
+  // Play a notification sound, unless the user muted them with /mutenotif.
+  const ping = (kind: "open" | "match" | "message"): void => { if (!mutedRef.current) notify(kind); };
 
   const handleEvent = (e: ClientEvent): void => {
     switch (e.t) {
@@ -84,15 +88,15 @@ export function App(
         setStatus("chatting");
         setLines((prev) => [
           ...prev,
-          { kind: "sys", body: "──────────────────────────────" },
-          { kind: "sys", body: `Matched with ${e.partner}. Anonymous, be decent — Chat not logged.` },
-          { kind: "sys", body: "⚠ Reminder: avoid clicking links you don't trust." },
+          { kind: "sys", body: `──────  matched with ${e.partner}  ·  chat not logged  ──────` },
+          ...(reminderShownRef.current ? [] : [{ kind: "sys", body: "⚠ Reminder: don't open links you don't trust." } as Line]),
         ]);
-        notify("match");
+        reminderShownRef.current = true;
+        ping("match");
         break;
       case "msg":
         push({ kind: "them", from: e.from, body: e.body });
-        notify("message");
+        ping("message");
         break;
       case "partner_left":
       case "task_done":
@@ -141,7 +145,7 @@ export function App(
   useEffect(() => {
     // Soft ping the moment the window opens, so you notice it even before a match
     // (the match sound needs a second person; this fires on open).
-    notify("open");
+    ping("open");
     // First connect resumes the room the background watcher matched (no "searching"
     // flash). After that we're a normal manual client.
     connect({ debug, session, resume });
@@ -180,6 +184,16 @@ export function App(
       push({ kind: "sys", body: "Reported — finding you a new dev…" });
       return;
     }
+    if (v === "/mutenotif") {
+      mutedRef.current = !mutedRef.current;
+      push({
+        kind: "sys",
+        body: mutedRef.current
+          ? "🔇 Notification sounds muted (match + message). Type /mutenotif again to unmute."
+          : "🔊 Notification sounds on.",
+      });
+      return;
+    }
     if (v === "/insights") {
       const msgs = lines.filter((l) => l.kind !== "sys").length;
       push({ kind: "sys", body: `you=${you || "…"}  partner=${partner || "-"}  online=${online}  messages=${msgs}` });
@@ -190,7 +204,7 @@ export function App(
         "DevRoulette — chat with a random dev while your Claude Code task runs.",
         "• A long task (~30s+) opens this window and matches you with someone also around.",
         "• It's NOT tied to your task — chat as long as you like. You're in control.",
-        "• /skip new dev   ·   /report flag + skip   ·   /quit close   ·   /insights stats",
+        "• /skip new dev · /report flag+skip · /mutenotif silence sounds · /quit close · /insights stats",
         "• Closed it? Start another long task to open it again.",
         `• Anonymous · random · chat not logged · 18+ · ${LEGAL_URL}`,
       ]) {
@@ -199,7 +213,7 @@ export function App(
       return;
     }
     if (v.startsWith("/")) {
-      push({ kind: "sys", body: "unknown command — /skip /report /quit /insights /help" });
+      push({ kind: "sys", body: "unknown command — /skip /report /mutenotif /quit /insights /help" });
       return;
     }
 

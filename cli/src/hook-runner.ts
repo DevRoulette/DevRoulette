@@ -235,7 +235,9 @@ function openChat(session: string, resumeToken: string): void {
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env, DEVROULETTE_TRIGGER: "hook", DEVROULETTE_HANDOFF: handoff };
   const inner =
-    `DEVROULETTE_TRIGGER=hook DEVROULETTE_HANDOFF=${shSingleQuote(handoff)} ` +
+    // `clear` first wipes the shell login noise + the echoed launch command so the
+    // chat opens on a clean pane (the JS clear in cli.ts handles scrollback too).
+    `clear; DEVROULETTE_TRIGGER=hook DEVROULETTE_HANDOFF=${shSingleQuote(handoff)} ` +
     `${shSingleQuote(process.execPath)} ${shSingleQuote(cli)} --room`;
   const fallback = (): void => openWindow(inner, cli, childEnv);
 
