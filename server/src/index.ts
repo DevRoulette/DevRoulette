@@ -605,15 +605,22 @@ function fmtDur(ms: number): string {
   return `${m}m`;
 }
 
+/** Distinct people currently connected (by match-key) — someone with several
+ *  windows open counts ONCE. The honest "online" number, used for both the
+ *  dashboard and the client's "● N online" so they always agree. */
+function onlineCount(): number {
+  const s = new Set<string>();
+  for (const m of conns.values()) s.add(m.matchKey);
+  return s.size;
+}
+
 /** Live usage numbers — used by both the dashboard render and the JSON poll
  *  endpoint so they stay consistent. */
 function liveStats(npm: { day: number | null; week: number | null; month: number | null }) {
-  const liveMachines = new Set<string>();
-  for (const cm of conns.values()) liveMachines.add(cm.matchKey);
   const tb = byDay.get(dayKey(Date.now()));
   return {
     // live (exact, right now)
-    online: liveMachines.size,
+    online: onlineCount(),
     ongoing: rooms.size,
     waiting: queue.length,
     // connections
@@ -1002,7 +1009,7 @@ const idleSweep = setInterval(() => {
 }, 60_000);
 
 const onlineBroadcast = setInterval(() => {
-  const frame: ServerFrame = { t: "online", count: conns.size, ad: currentAd() };
+  const frame: ServerFrame = { t: "online", count: onlineCount(), ad: currentAd() };
   for (const ws of conns.keys()) send(ws, frame);
 }, 10_000);
 
