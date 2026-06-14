@@ -18,9 +18,9 @@ const MAX_RECONNECTS = 5;
 
 /** Subtle notification — a soft macOS system sound, else the terminal bell.
  *  Fire-and-forget; never blocks or throws. */
-function notify(kind: "match" | "message"): void {
+function notify(kind: "open" | "match" | "message"): void {
   if (process.platform === "darwin") {
-    const sound = kind === "match" ? "Glass" : "Tink";
+    const sound = kind === "match" ? "Glass" : kind === "open" ? "Submarine" : "Tink";
     try {
       execFile("afplay", [`/System/Library/Sounds/${sound}.aiff`], () => {});
     } catch {
@@ -139,6 +139,9 @@ export function App(
   };
 
   useEffect(() => {
+    // Soft ping the moment the window opens, so you notice it even before a match
+    // (the match sound needs a second person; this fires on open).
+    notify("open");
     // First connect resumes the room the background watcher matched (no "searching"
     // flash). After that we're a normal manual client.
     connect({ debug, session, resume });

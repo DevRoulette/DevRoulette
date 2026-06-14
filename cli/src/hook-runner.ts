@@ -151,6 +151,27 @@ function splitOrFallback(label: string, file: string, args: string[], fallback: 
   }
 }
 
+/** Detect iTerm2 from ANY of its signals — TERM_PROGRAM isn't always propagated to
+ *  a hook subprocess, but LC_TERMINAL / ITERM_SESSION_ID usually survive. */
+function isITerm(): boolean {
+  return process.env.TERM_PROGRAM === "iTerm.app"
+    || process.env.LC_TERMINAL === "iTerm2"
+    || Boolean(process.env.ITERM_SESSION_ID);
+}
+/** Which macOS terminal to use. `DEVROULETTE_TERMINAL=iterm|terminal` forces it;
+ *  otherwise auto-detect iTerm. */
+function preferITerm(): boolean {
+  const p = (process.env.DEVROULETTE_TERMINAL || "").toLowerCase();
+  if (p === "iterm" || p === "iterm2") return true;
+  if (p === "terminal" || p === "apple" || p === "terminal.app") return false;
+  return isITerm();
+}
+/** Open + FOCUS a Terminal.app window. The `activate` is the fix for "I didn't know
+ *  it opened" — the window comes to the front instead of hiding behind your work. */
+function terminalOpenScript(inner: string): string {
+  return `tell application "Terminal"\n  activate\n  do script ${osaQuote(inner)}\nend tell`;
+}
+
 /**
  * Open the chat TUI in a NEW terminal window, cross-platform. The fallback when the
  * terminal has no split API. Secrets travel in the 0600 handoff file — never on
@@ -159,7 +180,19 @@ function splitOrFallback(label: string, file: string, args: string[], fallback: 
  */
 function openWindow(inner: string, cli: string, childEnv: NodeJS.ProcessEnv): void {
   if (process.platform === "darwin") {
-    launch("Terminal.app", "osascript", ["-e", `tell application "Terminal" to do script ${osaQuote(inner)}`]);
+    if (preferITerm()) {
+      // Open + focus a new iTerm window; if iTerm scripting fails, fall back to a
+      // focused Terminal.app window so the chat still shows up.
+      const osa =
+        `tell application "iTerm2"\n` +
+        `  activate\n` +
+        `  set newWindow to (create window with default profile)\n` +
+        `  tell current session of newWindow to write text ${osaQuote(inner)}\n` +
+        `end tell`;
+      return splitOrFallback("iTerm2 window", "osascript", ["-e", osa],
+        () => launch("Terminal.app", "osascript", ["-e", terminalOpenScript(inner)]));
+    }
+    launch("Terminal.app", "osascript", ["-e", terminalOpenScript(inner)]);
     return;
   }
   if (isWSL()) {
@@ -219,9 +252,11 @@ function openChat(session: string, resumeToken: string): void {
     return splitOrFallback("wezterm", "wezterm", ["cli", "split-pane", "--right", "--", "bash", "-lc", inner], fallback);
   }
   // iTerm2 — split the current session, then run the command in the new pane.
-  if (process.env.TERM_PROGRAM === "iTerm.app") {
+  // Hardened detection (LC_TERMINAL / ITERM_SESSION_ID) + honors DEVROULETTE_TERMINAL.
+  if (preferITerm()) {
     const osa =
       `tell application "iTerm2"\n` +
+      `  activate\n` +
       `  tell current session of current window to set newSession to (split vertically with default profile)\n` +
       `  tell newSession to write text ${osaQuote(inner)}\n` +
       `end tell`;

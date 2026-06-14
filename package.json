@@ -1,6 +1,6 @@
 {
   "name": "devroulette-cli",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "type": "module",
   "description": "Chatroulette for devs waiting on long Claude Code tasks.",
   "bin": {
