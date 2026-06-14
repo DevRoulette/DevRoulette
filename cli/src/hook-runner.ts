@@ -171,6 +171,16 @@ function preferITerm(): boolean {
   if (p === "terminal" || p === "apple" || p === "terminal.app") return false;
   return isITerm();
 }
+/** Where to place the chat. `DEVROULETTE_LAYOUT=window|tab|split` (default `split`):
+ *  - `split`  keeps the beside-Claude pane split wherever the terminal supports one
+ *  - `tab`    opens a new tab in the current terminal window
+ *  - `window` opens a brand-new standalone window */
+function layoutMode(): "split" | "tab" | "window" {
+  const v = (process.env.DEVROULETTE_LAYOUT || "").toLowerCase();
+  if (v === "window") return "window";
+  if (v === "tab") return "tab";
+  return "split";
+}
 /** Open + FOCUS a Terminal.app window. The `activate` is the fix for "I didn't know
  *  it opened" — the window comes to the front instead of hiding behind your work. */
 function terminalOpenScript(inner: string): string {
@@ -245,6 +255,33 @@ function openChat(session: string, resumeToken: string): void {
     `clear; DEVROULETTE_TRIGGER=hook DEVROULETTE_HANDOFF=${shSingleQuote(handoff)} ` +
     `${shSingleQuote(process.execPath)} ${shSingleQuote(cli)} --room`;
   const fallback = (): void => openWindow(inner, cli, childEnv);
+  const mode = layoutMode();
+
+  // Standalone window: skip every split/tab path. Routes through openWindow, so it
+  // still honors the iTerm2-vs-Terminal.app choice.
+  if (mode === "window") return fallback();
+
+  // New tab in the current window (macOS only). On any failure — no window open, or
+  // Terminal.app without accessibility permission — fall back to a standalone window.
+  if (mode === "tab" && process.platform === "darwin") {
+    if (preferITerm()) {
+      const osa =
+        `tell application "iTerm2"\n` +
+        `  activate\n` +
+        `  tell current window to create tab with default profile\n` +
+        `  tell current session of current window to write text ${osaQuote(inner)}\n` +
+        `end tell`;
+      return splitOrFallback("iTerm2 tab", "osascript", ["-e", osa], fallback);
+    }
+    // Terminal.app has no scriptable "new tab" verb — open one with a ⌘T keystroke,
+    // then run the command in the now-frontmost tab.
+    const osa =
+      `tell application "Terminal" to activate\n` +
+      `tell application "System Events" to keystroke "t" using command down\n` +
+      `delay 0.2\n` +
+      `tell application "Terminal" to do script ${osaQuote(inner)} in front window`;
+    return splitOrFallback("Terminal tab", "osascript", ["-e", osa], fallback);
+  }
 
   // tmux — split beside Claude's pane (uses $TMUX_PANE from our inherited env).
   if (process.env.TMUX) {
