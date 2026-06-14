@@ -95,11 +95,20 @@ export function install(url?: string): void {
   const runner = runnerPath();
   // bake the server URL into the hook command so there's no per-shell env fiddling
   const urlEnv = server ? `DEVROULETTE_URL=${shSingleQuote(server)} ` : "";
+  // Bake the terminal preference too. Claude Code may NOT pass the shell's env to
+  // hooks, so iTerm auto-detect (TERM_PROGRAM/ITERM_SESSION_ID) can come up empty
+  // and fall back to Terminal.app. `DEVROULETTE_TERMINAL=iterm devroulette init`
+  // forces iTerm reliably (baked inline → always reaches the hook); `terminal` forces
+  // the default Terminal.app.
+  const term = (process.env.DEVROULETTE_TERMINAL || "").toLowerCase();
+  const termVal = term === "iterm" || term === "iterm2" ? "iterm" : term === "terminal" || term === "apple" ? "terminal" : "";
+  const termEnv = termVal ? `DEVROULETTE_TERMINAL=${shSingleQuote(termVal)} ` : "";
   const wanted: Record<string, string> = {
-    UserPromptSubmit: `${SENTINEL} ${urlEnv}${quote(node)} ${quote(runner)} start`,
-    Stop: `${SENTINEL} ${urlEnv}${quote(node)} ${quote(runner)} stop`,
+    UserPromptSubmit: `${SENTINEL} ${urlEnv}${termEnv}${quote(node)} ${quote(runner)} start`,
+    Stop: `${SENTINEL} ${urlEnv}${termEnv}${quote(node)} ${quote(runner)} stop`,
   };
   if (server) console.log(`server URL baked into hooks → ${server}`);
+  if (termVal) console.log(`terminal preference baked into hooks → ${termVal}`);
 
   for (const [event, command] of Object.entries(wanted)) {
     const list = (settings.hooks[event] ??= []);
