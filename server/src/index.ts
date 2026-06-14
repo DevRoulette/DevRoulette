@@ -712,6 +712,7 @@ function reportsDashboardHtml(npm: { day: number | null; week: number | null; mo
   .stbl td.num{color:#7ee787;font-weight:700}
 </style></head><body>
   <h1>DevRoulette — dashboard</h1>
+  <button id="sndbtn" style="background:#161b22;color:#e6edf3;border:1px solid #243140;border-radius:8px;padding:7px 14px;font:inherit;cursor:pointer;margin:0 0 14px">🔔 connect alerts: off — click to enable</button>
   ${statsPanel}
   <h2>Abuse reports</h2>
   <p class="sub">Sorted by distinct reporters. Counts reset when the server restarts.</p>
@@ -729,11 +730,37 @@ function reportsDashboardHtml(npm: { day: number | null; week: number | null; mo
   // carries the same Basic-Auth credentials the browser already cached for /admin/*.
   (function () {
     var set = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = String(v); };
+    // Operator alert: a distinct rising chime (Web Audio — NOT a system/app sound)
+    // every time a new connection lands. Browsers need one click to allow audio.
+    var soundOn = false, lastConn = ${s.connAll}, audio = null;
+    function ding() {
+      try {
+        if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+        if (audio.state === 'suspended') audio.resume();
+        var t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+        o.connect(g); g.connect(audio.destination); o.type = 'sine';
+        o.frequency.setValueAtTime(660, t);
+        o.frequency.exponentialRampToValueAtTime(990, t + 0.14);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        o.start(t); o.stop(t + 0.34);
+      } catch (e) { /* audio not available */ }
+    }
+    var btn = document.getElementById('sndbtn');
+    if (btn) btn.addEventListener('click', function () {
+      soundOn = !soundOn;
+      btn.textContent = soundOn ? '🔔 connect alerts: ON' : '🔔 connect alerts: off — click to enable';
+      btn.style.borderColor = soundOn ? '#7ee787' : '#243140';
+      if (soundOn) { try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {} ding(); }
+    });
     async function tick() {
       try {
         var r = await fetch('/admin/stats', { cache: 'no-store' });
         if (!r.ok) return;
         var s = await r.json();
+        if (soundOn && s.connAll > lastConn) ding();
+        lastConn = s.connAll;
         set('s-online', s.online); set('s-ongoing', s.ongoing); set('s-waiting', s.waiting);
         set('s-connectedT', s.connToday); set('s-connected7', s.conn7); set('s-connected30', s.conn30); set('s-connectedA', s.connAll);
         set('s-convosT', s.convoToday); set('s-convos7', s.convo7); set('s-convos30', s.convo30); set('s-convosA', s.convoAll);
