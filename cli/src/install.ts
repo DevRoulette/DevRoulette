@@ -101,7 +101,17 @@ export function install(url?: string): void {
   // forces iTerm reliably (baked inline → always reaches the hook); `terminal` forces
   // the default Terminal.app.
   const term = (process.env.DEVROULETTE_TERMINAL || "").toLowerCase();
-  const termVal = term === "iterm" || term === "iterm2" ? "iterm" : term === "terminal" || term === "apple" ? "terminal" : "";
+  // Auto-detect iTerm from the shell where `init` runs. The HOOK can't see this env
+  // (that's the whole bug), but `init` runs in your real interactive shell — so if
+  // you run `devroulette init` from iTerm we detect it here and bake it in. Explicit
+  // DEVROULETTE_TERMINAL always wins.
+  const initIsITerm = process.env.TERM_PROGRAM === "iTerm.app"
+    || process.env.LC_TERMINAL === "iTerm2"
+    || Boolean(process.env.ITERM_SESSION_ID);
+  const termVal =
+    term === "iterm" || term === "iterm2" ? "iterm"
+    : term === "terminal" || term === "apple" ? "terminal"
+    : initIsITerm ? "iterm" : "";
   const termEnv = termVal ? `DEVROULETTE_TERMINAL=${shSingleQuote(termVal)} ` : "";
   const wanted: Record<string, string> = {
     UserPromptSubmit: `${SENTINEL} ${urlEnv}${termEnv}${quote(node)} ${quote(runner)} start`,
