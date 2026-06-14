@@ -152,10 +152,15 @@ function splitOrFallback(label: string, file: string, args: string[], fallback: 
 }
 
 /** Detect iTerm2 from ANY of its signals — TERM_PROGRAM isn't always propagated to
- *  a hook subprocess, but LC_TERMINAL / ITERM_SESSION_ID usually survive. */
+ *  a hook subprocess, but the LC_TERMINAL* vars / ITERM_SESSION_ID usually survive.
+ *  LC_TERMINAL_VERSION is iTerm2-specific and, being an LC_* var, is forwarded over
+ *  SSH and inherited by daemon-spawned hooks even when TERM_PROGRAM, ITERM_SESSION_ID
+ *  and even LC_TERMINAL itself have been stripped (the case for Claude Code background
+ *  / agent sessions) — so check it too. */
 function isITerm(): boolean {
   return process.env.TERM_PROGRAM === "iTerm.app"
     || process.env.LC_TERMINAL === "iTerm2"
+    || Boolean(process.env.LC_TERMINAL_VERSION)
     || Boolean(process.env.ITERM_SESSION_ID);
 }
 /** Which macOS terminal to use. `DEVROULETTE_TERMINAL=iterm|terminal` forces it;
